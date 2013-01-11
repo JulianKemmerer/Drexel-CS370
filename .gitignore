@@ -1,2 +1,8 @@
 *.o
+vmlinux
+*.o.cmd
+*.ko.cmd
+*.mod.c
+*.ko
 *.bz2
+*.rej
