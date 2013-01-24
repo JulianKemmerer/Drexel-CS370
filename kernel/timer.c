@@ -942,6 +942,15 @@ asmlinkage long sys_getpid(void)
 	return current->tgid;
 }
 
+/**
+ * sys_mygetpid - my first system call
+ */
+
+asmlinkage long sys_mygetpid(void)
+{
+    return current->tgid;
+}
+
 /*
  * Accessing ->real_parent is not SMP-safe, it could
  * change from under us. However, we can use a stale
