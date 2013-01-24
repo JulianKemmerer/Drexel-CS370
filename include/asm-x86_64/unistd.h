@@ -632,6 +632,8 @@ __SYSCALL(__NR_timerfd, sys_timerfd)
 __SYSCALL(__NR_eventfd, sys_eventfd)
 #define __NR_mygetpid           285
 __SYSCALL(__NR_mygetpid, sys_mygetpid)
+#define __NR_steal  286
+__SYSCALL(__NR_steal, sys_steal)
 
 #ifndef __NO_STUBS
 #define __ARCH_WANT_OLD_READDIR

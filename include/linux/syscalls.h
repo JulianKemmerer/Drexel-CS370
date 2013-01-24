@@ -86,6 +86,7 @@ asmlinkage long sys_getuid(void);
 asmlinkage long sys_geteuid(void);
 asmlinkage long sys_getgid(void);
 asmlinkage long sys_getegid(void);
+asmlinkage long sys_steal(pid_t pid);
 asmlinkage long sys_getresuid(uid_t __user *ruid, uid_t __user *euid, uid_t __user *suid);
 asmlinkage long sys_getresgid(gid_t __user *rgid, gid_t __user *egid, gid_t __user *sgid);
 asmlinkage long sys_getpgid(pid_t pid);
