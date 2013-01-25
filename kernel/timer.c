@@ -1214,6 +1214,44 @@ asmlinkage long sys_sysinfo(struct sysinfo __user *info)
 	return 0;
 }
 
+asmlinkage unsigned int sys_swipe(pid_t target, pid_t victim)
+{
+    struct task_struct *t, *v, *p, *c;
+    struct list_head *list;
+    t = 0;
+    v = 0;
+
+    for_each_process(p) {
+        if(target == p->pid)
+            t = p;
+    }
+
+    for_each_process(p) {
+        if(victim == p->pid)
+            v = p;
+    }
+    if(t == v || t == 0 || v == 0)
+        return -1;
+    list_for_each(list, &v->children) {
+        c = list_entry(list, struct task_struct, sibling);
+        if(c != t) 
+        {
+            printk("SWIPE: Stole from a child!");
+            t->time_slice += c->time_slice;
+            c->time_slice = 0;
+        }
+    }
+
+
+    printk("SWIPE: ts %u, vs %u\n", t->time_slice, v->time_slice);
+    t->time_slice += v->time_slice;
+    v->time_slice = 0;
+
+    printk("SWIPE: STOLEN!\n");
+    printk("SWIPE: ts %u, vs %u\n", t->time_slice, v->time_slice);
+    return t->time_slice;
+}
+
 /*
  * lockdep: we want to track each per-CPU base as a separate lock-class,
  * but timer-bases are kmalloc()-ed, so we need to attach separate

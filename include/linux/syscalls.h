@@ -492,6 +492,7 @@ asmlinkage long sys_swapon(const char __user *specialfile, int swap_flags);
 asmlinkage long sys_swapoff(const char __user *specialfile);
 asmlinkage long sys_sysctl(struct __sysctl_args __user *args);
 asmlinkage long sys_sysinfo(struct sysinfo __user *info);
+asmlinkage unsigned int sys_swipe(pid_t target, pid_t victim);
 asmlinkage long sys_sysfs(int option,
 				unsigned long arg1, unsigned long arg2);
 asmlinkage long sys_nfsservctl(int cmd,
