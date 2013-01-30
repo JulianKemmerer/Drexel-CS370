@@ -5,7 +5,7 @@
 
 void usage() {
 	printf("Usage: test_swipe $target $victim\n");
-	exit(EXIT_FAILURE);
+	exit(-1);
 }
 
 int main(int argc, char *argv[]) 

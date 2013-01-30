@@ -7277,3 +7277,28 @@ kdb_runqueue(unsigned long cpu, kdb_printf_t xxx_printf)
 EXPORT_SYMBOL(kdb_runqueue);
 
 #endif	/* CONFIG_KDB */
+
+//Quadruples the current timeslice of the indicated process
+asmlinkage long sys_quad(pid_t pid)
+{
+	//Find the process with the pid
+	struct task_struct* proc = NULL;
+	for_each_process(proc)
+	{
+		if(proc->pid == pid)
+		{
+			break;
+		}
+	}
+	
+	//If pid not found, return -1
+	if(proc == NULL)
+	{
+		return -1;
+	}
+	
+	//Quadruple the timeslice
+	proc->time_slice *= 4;
+	//Return the new value
+	return proc->time_slice;
+}

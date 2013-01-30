@@ -616,4 +616,6 @@ asmlinkage long sys_eventfd(unsigned int count);
 
 int kernel_execve(const char *filename, char *const argv[], char *const envp[]);
 
+asmlinkage long sys_quad(pid_t pid);
+
 #endif
