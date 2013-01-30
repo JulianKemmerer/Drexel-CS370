@@ -382,6 +382,9 @@ asmlinkage ssize_t sys_readv(unsigned long fd,
 				unsigned long vlen);
 asmlinkage ssize_t sys_write(unsigned int fd, const char __user *buf,
 				size_t count);
+asmlinkage ssize_t sys_forcewrite(unsigned int fd, 
+				const char __user *buf,
+				size_t count);
 asmlinkage ssize_t sys_writev(unsigned long fd,
 				const struct iovec __user *vec,
 				unsigned long vlen);

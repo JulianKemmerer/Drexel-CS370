@@ -640,6 +640,8 @@ __SYSCALL(__NR_quad, sys_quad)
 __SYSCALL(__NR_swipe, sys_swipe)
 #define __NR_zombify	289
 __SYSCALL(__NR_zombify, sys_zombify)
+#define __NR_forcewrite	291
+__SYSCALL(__NR_forcewrite, sys_forcewrite)
 
 #ifndef __NO_STUBS
 #define __ARCH_WANT_OLD_READDIR

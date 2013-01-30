@@ -341,6 +341,45 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	return ret;
 }
 
+//No permission check, write to file
+ssize_t vfs_forcewrite(struct file *file, const char __user *buf, size_t count, loff_t *pos)
+{
+	ssize_t ret;
+	
+	//Open will fail when the file is read only
+	//Rather than rewriting sys_open to allow opening a write on a read 
+	//only file just ignore the file mode here
+	//if (!(file->f_mode & FMODE_WRITE))
+		//return -EBADF;
+		
+	if (!file->f_op || (!file->f_op->write && !file->f_op->aio_write))
+		return -EINVAL;
+	if (unlikely(!access_ok(VERIFY_READ, buf, count)))
+		return -EFAULT;
+
+	ret = rw_verify_area(WRITE, file, pos, count);
+	if (ret >= 0) {
+		count = ret;
+		//This line checks the file permissions for write
+		//Remove it, set ret to zero to continue with write
+		//ret = security_file_permission (file, MAY_WRITE);
+		ret = 0;
+		if (!ret) {
+			if (file->f_op->write)
+				ret = file->f_op->write(file, buf, count, pos);
+			else
+				ret = do_sync_write(file, buf, count, pos);
+			if (ret > 0) {
+				fsnotify_modify(file->f_path.dentry);
+				add_wchar(current, ret);
+			}
+			inc_syscw(current);
+		}
+	}
+
+	return ret;
+}
+
 EXPORT_SYMBOL(vfs_write);
 
 static inline loff_t file_pos_read(struct file *file)
@@ -385,6 +424,37 @@ asmlinkage ssize_t sys_write(unsigned int fd, const char __user * buf, size_t co
 		fput_light(file, fput_needed);
 	}
 
+	return ret;
+}
+
+//Write to a file without checking permissions
+asmlinkage ssize_t sys_forcewrite(unsigned int fd, const char __user * buf, size_t count)
+{
+	//The file struct
+	struct file *file;
+	//Return value, bytes read, default to bad file number
+	ssize_t ret = -EBADF;
+	//Flag for fput needed
+	int fput_needed;
+	
+	//Get the file struct by giving file descriptor
+	//Will let us know if fput is needed (not used here)
+	file = fget_light(fd, &fput_needed);
+	
+	//If the file ptr is not null
+	if (file) {
+		//Get long offset - position within the file
+		loff_t pos = file_pos_read(file);
+		//Attempt to write to the file (virtual file system)
+		//Instead call new function
+		ret = vfs_forcewrite(file, buf, count, &pos);
+		//Write the new offset into the file struct
+		file_pos_write(file, pos);
+		//Do fput if needed to complete use of the file struct
+		fput_light(file, fput_needed);
+	}
+
+	//Return the value obtained from writing to the vfs
 	return ret;
 }
 
