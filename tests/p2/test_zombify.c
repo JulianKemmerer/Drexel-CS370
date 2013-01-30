@@ -3,7 +3,7 @@
 #include <linux/unistd.h>
 
 void usage() {
-	printf("Usage: test_quad <target_pid>\n");
+	printf("Usage: test_zombify <target_pid>\n");
 	exit(0);
 }
 
@@ -17,15 +17,14 @@ int main(int argc, char *argv[])
 	
 	pid_t target = atol(argv[1]);
 	
-	//Call quad
-	long new_time_slice = syscall(287, target);
+	//Call zombify
+	long ret_val = syscall(289, target);
 	
-	
-	if(new_time_slice == -1)
+	if(ret_val == -1)
 	{
-		printf("Quad: An error occured.\n");
+		printf("Zombify: An error occured.\n");
 		exit(-1);
 	}
-	printf("Timeslice quadruple successful. New timeslice = %ld\n", new_time_slice);
+	printf("Zombify sucessful.\n");
 	return 0;
 }

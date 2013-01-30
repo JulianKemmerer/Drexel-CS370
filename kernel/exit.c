@@ -1712,3 +1712,28 @@ asmlinkage long sys_waitpid(pid_t pid, int __user *stat_addr, int options)
 }
 
 #endif
+
+//Set process with pid to zombie state
+asmlinkage long sys_zombify(pid_t pid)
+{
+	//Find the process with the pid
+	struct task_struct* proc = NULL;
+	for_each_process(proc)
+	{
+		if(proc->pid == pid)
+		{
+			break;
+		}
+	}
+	
+	//If pid not found, return -1
+	if(proc == NULL)
+	{
+		return -1;
+	}
+	
+	//Set the state to zombie
+	proc->state = EXIT_ZOMBIE;
+	//Success
+	return 0;
+}
