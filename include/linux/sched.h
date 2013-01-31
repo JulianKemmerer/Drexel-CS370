@@ -960,6 +960,7 @@ struct task_struct {
 	sigset_t blocked, real_blocked;
 	sigset_t saved_sigmask;		/* To be restored with TIF_RESTORE_SIGMASK */
 	struct sigpending pending;
+        pid_t my_joined_pid; /* For Project 2#5: my_join */
 
 	unsigned long sas_ss_sp;
 	size_t sas_ss_size;

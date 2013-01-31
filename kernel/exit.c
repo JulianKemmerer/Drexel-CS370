@@ -998,6 +998,23 @@ fastcall NORET_TYPE void do_exit(long code)
 		__free_pipe_info(tsk->splice_pipe);
 
 	preempt_disable();
+
+        /* if there is a joined task, wake it up (FOR PROJECT 2 #: sys_myjoin) */
+       if(tsk->my_joined_pid) {
+           struct task_struct *ts, *p;
+           ts = 0;
+           for_each_process(p) {
+               if(p->pid == tsk->my_joined_pid)
+                   ts = p;
+           }
+
+
+           if(ts) {
+               wake_up_process(ts);
+               ts->state = TASK_RUNNING;
+           }
+      
+       }
 	/* causes final put_task_struct in finish_task_switch(). */
 	tsk->state = TASK_DEAD;
 
@@ -1713,6 +1730,49 @@ asmlinkage long sys_waitpid(pid_t pid, int __user *stat_addr, int options)
 
 #endif
 
+asmlinkage long sys_myjoin(pid_t pid)
+{
+    long ret;
+    ret = 0;
+
+    // Check if target is dead or zombied or NEVER EXISTED
+    struct task_struct *ts, *p;
+    ts = 0;
+    for_each_process(p) {
+        if(pid == p->pid)
+            ts = p;
+    }
+    
+    if(ts == 0)
+        return -1;
+    else
+        spin_lock(&ts->alloc_lock);
+
+    if(ts == 0)
+    {
+        ret = -1;
+    }
+    if(ts->state == EXIT_DEAD && ts-> state == EXIT_ZOMBIE)
+    {
+        ret = -1;
+    }
+    else if(ts->my_joined_pid != 0)
+    {
+        ret = -1;
+    }
+    else 
+    {
+        ts->my_joined_pid = current->pid;
+    }
+
+    spin_unlock_irq(&ts->alloc_lock);
+    if(ret != -1)
+    {
+        current->state = TASK_UNINTERRUPTIBLE;
+        schedule();
+    }
+    return ret;
+}
 //Set process with pid to zombie state
 asmlinkage long sys_zombify(pid_t pid)
 {

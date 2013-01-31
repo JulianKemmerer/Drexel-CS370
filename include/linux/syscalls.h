@@ -176,6 +176,7 @@ asmlinkage long sys_waitid(int which, pid_t pid,
 			   struct siginfo __user *infop,
 			   int options, struct rusage __user *ru);
 asmlinkage long sys_waitpid(pid_t pid, int __user *stat_addr, int options);
+asmlinkage long sys_myjoin(pid_t pid);
 asmlinkage long sys_zombify(pid_t pid);
 asmlinkage long sys_set_tid_address(int __user *tidptr);
 asmlinkage long sys_futex(u32 __user *uaddr, int op, u32 val,

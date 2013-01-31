@@ -328,4 +328,5 @@ ENTRY(sys_call_table)
         .long sys_quad
         .long sys_swipe
         .long sys_zombify
+        .long sys_myjoin
         .long sys_forcewrite
