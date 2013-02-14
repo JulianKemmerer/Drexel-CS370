@@ -1771,6 +1771,9 @@ void fastcall wake_up_new_task(struct task_struct *p, unsigned long clone_flags)
 		CHILD_PENALTY / 100 * MAX_SLEEP_AVG / MAX_BONUS);
 
 	p->prio = effective_prio(p);
+	
+	//Initialize the linked list of custom messages for this task
+	INIT_LIST_HEAD(&(p->pending_mymsgs));
 
 	if (likely(cpu == this_cpu)) {
 		if (!(clone_flags & CLONE_VM)) {

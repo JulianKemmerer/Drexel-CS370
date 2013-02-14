@@ -979,32 +979,36 @@ asmlinkage long sys_mysend(pid_t pid, int n, char* buf)
 	
 	//Copy the user ptr to kernel pointer
 	char * msg_data_kernel;
-	//			  						 *to     , *from    ,  n  
+	msg_data_kernel = (char*) kmalloc(n, GFP_KERNEL);
+	//			  						   *to         , *from ,  n  
 	int not_copied_bytes = copy_from_user(msg_data_kernel, buf, n);
 	//If we could not copy all bytes
 	if(not_copied_bytes != 0)
 	{
-		return -1;
+		return -2;
 	}
 	
 	//Add message to list
 	//First create tmp mymsg to populate
-	struct mymsg tmp_mymsg;
+	struct mymsg * tmp_mymsg = kmalloc(sizeof(struct mymsg), GFP_KERNEL);
+	if(tmp_mymsg == NULL)
+	{
+		return -3;
+	}
 	
 	//Populate the fields of the mymsg, init list field
-	tmp_mymsg.msg_data = msg_data_kernel;
-	tmp_mymsg.data_length = n;
-	tmp_mymsg.origin_pid = current->pid;
-	INIT_LIST_HEAD(&tmp_mymsg.msg_list);
+	tmp_mymsg->msg_data = msg_data_kernel;
+	tmp_mymsg->data_length = n;
+	tmp_mymsg->origin_pid = current->pid;
+	INIT_LIST_HEAD(&(tmp_mymsg->msg_list));
 	
 	//Aquire the lock for the list
-	spin_lock(&tsk->pending_mymsgs_lock);
+	spin_lock(&(tsk->pending_mymsgs_lock));
 	
-	//Add tmp message to list
-	list_add(&tmp_mymsg.msg_list, &tsk->pending_mymsgs);
+	list_add_tail(&(tmp_mymsg->msg_list), &(tsk->pending_mymsgs));
 	
 	//Release the lock for the list
-	spin_unlock(&tsk->pending_mymsgs_lock);
+	spin_unlock(&(tsk->pending_mymsgs_lock));
 	
 	return 0;
 }
@@ -1016,8 +1020,10 @@ asmlinkage long sys_myreceive(pid_t pid, int n, char* buf)
 	//Loop through the list of messages
 	struct mymsg * mymsg_it = NULL;
 	//Macro: give iterator, the linked list, and name of list head struct field
-	list_for_each_entry(mymsg_it, &current->pending_mymsgs, msg_list)
+	list_for_each_entry(mymsg_it, &(current->pending_mymsgs), msg_list)
 	{
+		//This infinite loops?
+		
 		//How many bytes to copy?
 		int bytes_to_copy = 0;
 		if(mymsg_it->data_length > n)
