@@ -167,9 +167,13 @@ extern struct group_info init_groups;
 		[PIDTYPE_PGID] = INIT_PID_LINK(PIDTYPE_PGID),		\
 		[PIDTYPE_SID]  = INIT_PID_LINK(PIDTYPE_SID),		\
 	},								\
+	.pending_mymsgs = LIST_HEAD_INIT(tsk.pending_mymsgs),			\
+	.pending_mymsgs_lock = __SPIN_LOCK_UNLOCKED(tsk.pending_mymsgs_lock),		\
 	INIT_TRACE_IRQFLAGS						\
 	INIT_LOCKDEP							\
 }
+//Not sure if I can comment within a #define statement, anywhooo
+//Init pending messages and the list lock
 
 
 #define INIT_CPU_TIMERS(cpu_timers)					\

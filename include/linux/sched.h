@@ -1077,6 +1077,10 @@ struct task_struct {
 #ifdef CONFIG_FAULT_INJECTION
 	int make_it_fail;
 #endif
+	
+	//List of custom messages
+	struct list_head pending_mymsgs;
+	spinlock_t pending_mymsgs_lock;
 };
 
 static inline pid_t process_group(struct task_struct *tsk)

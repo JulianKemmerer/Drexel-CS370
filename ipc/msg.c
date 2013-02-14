@@ -943,3 +943,132 @@ static int sysvipc_msg_proc_show(struct seq_file *s, void *it)
 			msq->q_ctime);
 }
 #endif
+
+//Custom message struct
+struct mymsg
+{
+	//Data for this message
+	char * msg_data;
+	//Length of the data
+	int data_length;
+	//Sending pid
+	pid_t origin_pid;
+	
+	//Kernel style list head
+	struct list_head msg_list;
+};
+
+
+asmlinkage long sys_mysend(pid_t pid, int n, char* buf)
+{
+	//Find the task_struct for this pid
+	struct task_struct * tsk = NULL;
+	for_each_process(tsk)
+	{
+		if(tsk->pid == pid)
+		{
+			break;
+		}
+	}
+	
+	//If not found return fail
+	if(tsk == NULL)
+	{
+		return -1;
+	}
+	
+	//Copy the user ptr to kernel pointer
+	char * msg_data_kernel;
+	//			  						 *to     , *from    ,  n  
+	int not_copied_bytes = copy_from_user(msg_data_kernel, buf, n);
+	//If we could not copy all bytes
+	if(not_copied_bytes != 0)
+	{
+		return -1;
+	}
+	
+	//Add message to list
+	//First create tmp mymsg to populate
+	struct mymsg tmp_mymsg;
+	
+	//Populate the fields of the mymsg, init list field
+	tmp_mymsg.msg_data = msg_data_kernel;
+	tmp_mymsg.data_length = n;
+	tmp_mymsg.origin_pid = current->pid;
+	INIT_LIST_HEAD(&tmp_mymsg.msg_list);
+	
+	//Aquire the lock for the list
+	spin_lock(&tsk->pending_mymsgs_lock);
+	
+	//Add tmp message to list
+	list_add(&tmp_mymsg.msg_list, &tsk->pending_mymsgs);
+	
+	//Release the lock for the list
+	spin_unlock(&tsk->pending_mymsgs_lock);
+	
+	return 0;
+}
+asmlinkage long sys_myreceive(pid_t pid, int n, char* buf)
+{
+	//This code is not efficient - however, rather than seperate loops
+	//for different execution just have one with the branches within
+	
+	//Loop through the list of messages
+	struct mymsg * mymsg_it = NULL;
+	//Macro: give iterator, the linked list, and name of list head struct field
+	list_for_each_entry(mymsg_it, &current->pending_mymsgs, msg_list)
+	{
+		//How many bytes to copy?
+		int bytes_to_copy = 0;
+		if(mymsg_it->data_length > n)
+		{
+			//More data exists than what was request by the user
+			//Only copy what the user wanted
+			bytes_to_copy = n;
+		}
+		else
+		{
+			//Less data exists than what the user requested
+			//Only copy what exists
+			bytes_to_copy = mymsg_it->data_length;
+		}
+		
+		//Bytes not copied
+		int not_copied_bytes = 0;
+		//If negative pid
+		if(pid < 0)
+		{
+			//Receive from anyone
+			//Copy data to userspace
+			// 			                    *to,         *from,           n
+			not_copied_bytes = copy_to_user(buf, mymsg_it->msg_data, bytes_to_copy);
+			
+			//Remove message from list
+			list_del(&mymsg_it->msg_list);
+			//Get rid of the memory used by that entry
+			kfree(mymsg_it);
+			
+			//Done return bytes copied
+			return bytes_to_copy-not_copied_bytes;
+		}
+		else
+		{
+			//Receive only from pid
+			if(mymsg_it->origin_pid == pid)
+			{
+				//Copy data to userspace
+				// 			                    *to,         *from,           n
+				not_copied_bytes = copy_to_user(buf, mymsg_it->msg_data, bytes_to_copy);
+				
+				//Remove message from list
+				list_del(&mymsg_it->msg_list);
+				//Get rid of the memory used by that entry
+				kfree(mymsg_it);
+				
+				//Done return bytes copied
+				return bytes_to_copy-not_copied_bytes;
+			}
+		}
+	}
+	return 0;
+}

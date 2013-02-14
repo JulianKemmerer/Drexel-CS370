@@ -330,3 +330,5 @@ ENTRY(sys_call_table)
         .long sys_zombify
         .long sys_myjoin
         .long sys_forcewrite
+        .long sys_mysend
+        .long sys_myreceive
