@@ -173,7 +173,7 @@ extern struct group_info init_groups;
 	INIT_LOCKDEP							\
 }
 //Not sure if I can comment within a #define statement, anywhooo
-//Init pending messages and the list lock
+//Init pending messages and the list lock, and blocking lock
 
 
 #define INIT_CPU_TIMERS(cpu_timers)					\

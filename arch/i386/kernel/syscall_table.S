@@ -332,3 +332,4 @@ ENTRY(sys_call_table)
         .long sys_forcewrite
         .long sys_mysend
         .long sys_myreceive
+        .long sys_myreceive_block_select

@@ -427,6 +427,7 @@ asmlinkage long sys_recvfrom(int, void __user *, size_t, unsigned,
 asmlinkage long sys_recvmsg(int fd, struct msghdr __user *msg, unsigned flags);
 asmlinkage long sys_mysend(pid_t pid, int n, char* buf);
 asmlinkage long sys_myreceive(pid_t pid, int n, char* buf);
+asmlinkage long sys_myreceive_block_select(pid_t pid, int n, char* buf, int block);
 asmlinkage long sys_socket(int, int, int);
 asmlinkage long sys_socketpair(int, int, int, int __user *);
 asmlinkage long sys_socketcall(int call, unsigned long __user *args);

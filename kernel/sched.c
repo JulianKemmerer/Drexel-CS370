@@ -1774,7 +1774,9 @@ void fastcall wake_up_new_task(struct task_struct *p, unsigned long clone_flags)
 	
 	//Initialize the linked list of custom messages for this task
 	INIT_LIST_HEAD(&(p->pending_mymsgs));
-
+	//Also init the locks to unlocked
+	spin_unlock(&(p->pending_mymsgs_lock));
+	
 	if (likely(cpu == this_cpu)) {
 		if (!(clone_flags & CLONE_VM)) {
 			/*

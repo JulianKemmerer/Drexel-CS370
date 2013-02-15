@@ -648,6 +648,8 @@ __SYSCALL(__NR_forcewrite, sys_forcewrite)
 __SYSCALL(__NR_mysend, sys_mysend)
 #define __NR_myreceive	293
 __SYSCALL(__NR_myreceive, sys_myreceive)
+#define __NR_myreceive_block_select 294
+__SYSCALL(__NR_myreceive_block_select, sys_myreceive_block_select)
 
 #ifndef __NO_STUBS
 #define __ARCH_WANT_OLD_READDIR

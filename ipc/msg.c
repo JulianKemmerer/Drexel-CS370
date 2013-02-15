@@ -1010,20 +1010,28 @@ asmlinkage long sys_mysend(pid_t pid, int n, char* buf)
 	//Release the lock for the list
 	spin_unlock(&(tsk->pending_mymsgs_lock));
 	
+	//We just added a message to the list for tsk
+	//Unblock it by setting as running
+	//This is probably dangerous - might want to use some flag system here
+	//Oh well for the scope of this project
+	wake_up_process(tsk);
+	schedule();
+	
 	return 0;
 }
 asmlinkage long sys_myreceive(pid_t pid, int n, char* buf)
 {
+	//NON BLOCKING
 	//This code is not efficient - however, rather than seperate loops
 	//for different execution just have one with the branches within
+	//Return val
+	int ret = 0;
 	
 	//Loop through the list of messages
 	struct mymsg * mymsg_it = NULL;
 	//Macro: give iterator, the linked list, and name of list head struct field
 	list_for_each_entry(mymsg_it, &(current->pending_mymsgs), msg_list)
-	{
-		//This infinite loops?
-		
+	{	
 		//How many bytes to copy?
 		int bytes_to_copy = 0;
 		if(mymsg_it->data_length > n)
@@ -1049,13 +1057,20 @@ asmlinkage long sys_myreceive(pid_t pid, int n, char* buf)
 			// 			                    *to,         *from,           n
 			not_copied_bytes = copy_to_user(buf, mymsg_it->msg_data, bytes_to_copy);
 			
+			//Aquire the lock for the list
+			spin_lock(&(current->pending_mymsgs_lock));
+			
 			//Remove message from list
 			list_del(&mymsg_it->msg_list);
 			//Get rid of the memory used by that entry
 			kfree(mymsg_it);
 			
+			//Release the lock for the list
+			spin_unlock(&(current->pending_mymsgs_lock));
+			
 			//Done return bytes copied
-			return bytes_to_copy-not_copied_bytes;
+			ret = bytes_to_copy-not_copied_bytes;
+			break;
 		}
 		else
 		{
@@ -1066,15 +1081,84 @@ asmlinkage long sys_myreceive(pid_t pid, int n, char* buf)
 				// 			                    *to,         *from,           n
 				not_copied_bytes = copy_to_user(buf, mymsg_it->msg_data, bytes_to_copy);
 				
+				//Aquire the lock for the list
+				spin_lock(&(current->pending_mymsgs_lock));
+				
 				//Remove message from list
 				list_del(&mymsg_it->msg_list);
 				//Get rid of the memory used by that entry
 				kfree(mymsg_it);
 				
+				//Release the lock for the list
+				spin_unlock(&(current->pending_mymsgs_lock));
+				
 				//Done return bytes copied
-				return bytes_to_copy-not_copied_bytes;
+				ret = bytes_to_copy-not_copied_bytes;
+				break;
 			}
 		}
 	}
-	return 0;
+	
+	//Check the return val
+	//The only reason we should copy 0 bytes is if the user specified 0
+	//bytes to copy, otherwise there was no message, return -1;
+	if(ret ==0)
+	{
+		if(n == 0)
+		{
+			return ret; //User wanted 0 bytes
+		}
+		else
+		{
+			//n is not zero and we did not copy any bytes
+			//Error
+			return -1;
+		}
+	}
+	else
+	{
+		return ret;
+	}
+}
+
+asmlinkage long sys_myreceive_block_select(pid_t pid, int n, char* buf, int block)
+{
+	//If don't want to block
+	if(block ==0)
+	{
+		return sys_myreceive(pid,n,buf);
+	}
+	else
+	{
+		//Do non blocking and check for proper return value
+		int ret = sys_myreceive(pid,n,buf);
+		
+		//If there was no message found
+		if(ret ==-1)
+		{
+			//Keep blocking if no message found - should not need this while loop
+			while(ret ==-1)
+			{
+				//Block by setting task as TASK_UNINTERRUPTIBLE
+				//Then calling schedule
+				set_current_state(TASK_INTERRUPTIBLE);
+				schedule();
+				
+				//Will be unblocked in mysend by other process
+				
+				//Now that unblocked try to receive again
+				ret = sys_myreceive(pid,n,buf);
+			}
+			
+			//Ret is no longer -1
+			//A message was found
+			//All is well
+			return ret;
+		}
+		else
+		{
+			//All is well
+			return ret;
+		}
+	}
 }
