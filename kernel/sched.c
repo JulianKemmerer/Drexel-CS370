@@ -3578,62 +3578,30 @@ asmlinkage void __sched schedule(void)
 	int cpu, idx, new_prio;
 	long *switch_count;
 	struct rq *rq;
-
-        // MY STUFF
-        // Get list of users
-        // Get count of each user
-        
-        int user_count = 0;
-
-        typedef struct {
-            struct user_node *next;
-            int user_id;
-            int process_count;
-        }user_node;
-
-        user_node *head, *node;
-        head = kmalloc(sizeof(user_node), GFP_KERNEL);
-        node = kmalloc(sizeof(user_node), GFP_KERNEL);
-         
-        struct task_struct *p;
-        for_each_process(p) {
-            if(user_count == 0) {
-                head->user_id = 0;
-                head->process_count = 0;
-                head->next = 0;
-                node = head;
-                user_count = 1;
-            } 
-            else {
-                do {
-                    if (p->uid == node->user_id) {
-                        node->process_count++; 
-                    } else {
-                        user_node *new;
-                        new = kmalloc(sizeof(user_node), GFP_KERNEL);
-                       new->user_id = p->uid;
-                        new->process_count = 1;
-                        new->next = 0;
-                        
-                        if(head->next == 0)
-                            head->next = new;
-                        node->next = new;
-                        node = new;
-
-                        user_count++;
-                    }
-                    
-                } while(node->next != 0);
-            }
-            
-        }
-
-        
-        //kfree(head); //FOR SOME STUPID REASON KFREE KERNEL PANICS... I HATE THIS...
-        //kfree(node);
-            
-        //END MY STUFF
-        //
+	
+	
+	//Julian's Stuff
+	//Don't have an easy way to count the number of users
+	//Let's assume there is a max number of users
+	//Google says it is 4 billion...no alloc'ing that.
+	//This is a hack but let's say 100 maximum users
+	const unsigned int MAX_USERS = 100;
+	//Allocate an array of unsigned ints
+	unsigned int user_ids[MAX_USERS];
+	//Keep track of where this list ends
+	int last_user_index = -1;
+	
+	//Loop through each process
+	//Accumulate the total timeslice avaible for the user
+	//And the total time slice available across all processes
+	//Also create a list of user ids so we count
+	unsigned long total_system_time_slice = 0;
+	struct task_struct *p;
+	
+	
+	
+	
+	
 	/*
 	 * Test if we are atomic.  Since do_exit() needs to call into
 	 * schedule() atomically, we ignore that path for now.
@@ -3680,7 +3648,6 @@ need_resched_nonpreemptible:
 	 * delay them losing their interactive status
 	 */
 	run_time /= (CURRENT_BONUS(prev) ? : 1);
-
 	spin_lock_irq(&rq->lock);
 
 	switch_count = &prev->nivcsw;
@@ -3705,7 +3672,7 @@ need_resched_nonpreemptible:
 			goto switch_tasks;
 		}
 	}
-
+	
 	array = rq->active;
 	if (unlikely(!array->nr_active)) {
 		/*
@@ -3733,25 +3700,67 @@ need_resched_nonpreemptible:
 
 		array = next->array;
 		new_prio = recalc_task_prio(next, next->timestamp + delta);
+		
 		if (unlikely(next->prio != new_prio)) {
 			dequeue_task(next, array);
-			//next->prio = new_prio;
-                        //MY STUFF (I DONT THINK THIS WORKS YET)
-                        while (head->next != 0) {
-                            if(head->user_id == next)
-                                break;
-                            else
-                                head = head->next;
-                        }
-                        next->time_slice = DEF_TIMESLICE / user_count / head->process_count;
-                        if(next->uid == 0) {
-                            next->time_slice = 1;
-                        }
-                        //END MY STUFF
+			next->prio = new_prio;
 			enqueue_task(next, array);
 		}
 	}
 	next->sleep_type = SLEEP_NORMAL;
+	
+	for_each_process(p) 
+	{
+		//Add in timeslice from this process for total system
+		total_system_time_slice += p->time_slice;
+		
+		//Loop through the list and see if this user id exists
+		int i;
+		unsigned int found_user = 0;
+		for(i = 0; i <= last_user_index; ++i)
+		{
+			//Check if this index contains the user id
+			if(user_ids[i] == p->user->uid)
+			{
+				found_user = 1;
+				break;
+			}
+		}
+		
+		//Did we find this user id already?
+		if(found_user == 0)
+		{
+			//Add this user id to list
+			last_user_index++;
+			user_ids[last_user_index] = p->user->uid;
+		}
+	}
+		
+	//Loop again and give each process 
+	//a divison of the total timeslice
+	//First divide by the number of users
+	//Then divide by the number of processes by that user
+	for_each_process(p) 
+	{
+		//last_user_index is last good index in array
+		//Number of users would be last_user_index+1
+		//Processes is atomic, read it atomically
+		//Check for zero users...?
+		if( (last_user_index+1) == 0 || atomic_read( &(p->user->processes)) == 0)
+		{
+			printk(KERN_WARNING "Zero users on the system? Zero processes on system? Darn.\n");
+		}
+		else
+		{
+			p->time_slice = (total_system_time_slice / (last_user_index+1))/atomic_read( &(p->user->processes));
+			if(p->time_slice < MIN_TIMESLICE)
+			{
+				p->time_slice = MIN_TIMESLICE;
+			}
+		}
+	}
+	
+	
 switch_tasks:
 	if (next == rq->idle)
 		schedstat_inc(rq, sched_goidle);
