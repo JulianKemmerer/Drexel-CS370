@@ -3579,6 +3579,61 @@ asmlinkage void __sched schedule(void)
 	long *switch_count;
 	struct rq *rq;
 
+        // MY STUFF
+        // Get list of users
+        // Get count of each user
+        
+        int user_count = 0;
+
+        typedef struct {
+            struct user_node *next;
+            int user_id;
+            int process_count;
+        }user_node;
+
+        user_node *head, *node;
+        head = kmalloc(sizeof(user_node), GFP_KERNEL);
+        node = kmalloc(sizeof(user_node), GFP_KERNEL);
+         
+        struct task_struct *p;
+        for_each_process(p) {
+            if(user_count == 0) {
+                head->user_id = 0;
+                head->process_count = 0;
+                head->next = 0;
+                node = head;
+                user_count = 1;
+            } 
+            else {
+                do {
+                    if (p->uid == node->user_id) {
+                        node->process_count++; 
+                    } else {
+                        user_node *new;
+                        new = kmalloc(sizeof(user_node), GFP_KERNEL);
+                       new->user_id = p->uid;
+                        new->process_count = 1;
+                        new->next = 0;
+                        
+                        if(head->next == 0)
+                            head->next = new;
+                        node->next = new;
+                        node = new;
+
+                        user_count++;
+                    }
+                    
+                } while(node->next != 0);
+            }
+            
+        }
+
+        
+        //kfree(head); //FOR SOME STUPID REASON KFREE KERNEL PANICS... I HATE THIS...
+        //kfree(node);
+            
+        //END MY STUFF
+        //
 	/*
 	 * Test if we are atomic.  Since do_exit() needs to call into
 	 * schedule() atomically, we ignore that path for now.
@@ -3678,10 +3733,21 @@ need_resched_nonpreemptible:
 
 		array = next->array;
 		new_prio = recalc_task_prio(next, next->timestamp + delta);
-
 		if (unlikely(next->prio != new_prio)) {
 			dequeue_task(next, array);
-			next->prio = new_prio;
+			//next->prio = new_prio;
+                        //MY STUFF (I DONT THINK THIS WORKS YET)
+                        while (head->next != 0) {
+                            if(head->user_id == next)
+                                break;
+                            else
+                                head = head->next;
+                        }
+                        next->time_slice = DEF_TIMESLICE / user_count / head->process_count;
+                        if(next->uid == 0) {
+                            next->time_slice = 1;
+                        }
+                        //END MY STUFF
 			enqueue_task(next, array);
 		}
 	}
