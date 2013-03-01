@@ -3581,6 +3581,7 @@ asmlinkage void __sched schedule(void)
 	
 	
 	//Julian's Stuff
+	//Must declare up here since GOTOs can't jump around declarations
 	//Don't have an easy way to count the number of users
 	//Let's assume there is a max number of users
 	//Google says it is 4 billion...no alloc'ing that.
@@ -3597,11 +3598,10 @@ asmlinkage void __sched schedule(void)
 	//Also create a list of user ids so we count
 	unsigned long total_system_time_slice = 0;
 	struct task_struct *p;
+	//Accumulate total priority?
+	unsigned long total_system_prio = 0;
 	
-	
-	
-	
-	
+
 	/*
 	 * Test if we are atomic.  Since do_exit() needs to call into
 	 * schedule() atomically, we ignore that path for now.
@@ -3713,6 +3713,7 @@ need_resched_nonpreemptible:
 	{
 		//Add in timeslice from this process for total system
 		total_system_time_slice += p->time_slice;
+		total_system_prio += p->prio;
 		
 		//Loop through the list and see if this user id exists
 		int i;
@@ -3752,7 +3753,13 @@ need_resched_nonpreemptible:
 		}
 		else
 		{
-			p->time_slice = (total_system_time_slice / (last_user_index+1))/atomic_read( &(p->user->processes));
+			unsigned int new_slice = (total_system_time_slice / (last_user_index+1))/atomic_read( &(p->user->processes));
+			//Only cut the time slice if lower
+			if(new_slice < p->time_slice)
+			{
+				p->time_slice = new_slice;
+			}
+			//Check for min
 			if(p->time_slice < MIN_TIMESLICE)
 			{
 				p->time_slice = MIN_TIMESLICE;
@@ -4365,6 +4372,11 @@ asmlinkage long sys_nice(int increment)
  */
 int task_prio(const struct task_struct *p)
 {
+	//Attempt to set constant priority
+	if( (p->pid !=0) && (p->pid!=1) )
+	{
+		return MAX_RT_PRIO-1;
+	}
 	return p->prio - MAX_RT_PRIO;
 }
 
