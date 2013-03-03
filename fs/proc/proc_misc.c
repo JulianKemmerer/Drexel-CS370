@@ -632,6 +632,41 @@ static int show_stat(struct seq_file *p, void *v)
 	return 0;
 }
 
+static int fair_scheduler_information(char *sys_buffer, char **my_buffer, off_t file_pos, int my_buffer_length)
+{
+    static char buffer[250];
+    int len, users, processes, timeslice;
+    const unsigned int MAX_USERS = 100;
+    unsigned int user_ids[MAX_USERS];
+    int last_user_index = -1;
+    unsigned long total_system_time_slice = 0;
+    struct task_struct *p;
+    for_each_process(p) 
+    {
+        total_system_time_slice += p->time_slice;
+        int i;
+        unsigned int found_user = 0;
+        for(i = 0; i <= last_user_index; ++i)
+        {
+            if(user_ids[i] == p->user->uid)
+            {
+                found_user = 1;
+                break;
+            }
+        }
+        if(found_user == 0)
+        {   
+            last_user_index++;
+            user_ids[last_user_index] = p->user->uid;
+        }
+    }
+    users = last_user_index + 1;
+    timeslice = (total_system_time_slice / (last_user_index+1));
+    len = sprintf(buffer, "Number of users: %d\nTimeslice each user gets: %d\n", users, timeslice);
+    *my_buffer = buffer;
+    return len;
+}
+
 static int stat_open(struct inode *inode, struct file *file)
 {
 	unsigned size = 4096 * (1 + num_possible_cpus() / 32);
@@ -789,6 +824,7 @@ void __init proc_misc_init(void)
 		{"cmdline",	cmdline_read_proc},
 		{"locks",	locks_read_proc},
 		{"execdomains",	execdomains_read_proc},
+                {"fairscheduler", fair_scheduler_information},
 		{NULL,}
 	};
 	for (p = simple_ones; p->name; p++)
