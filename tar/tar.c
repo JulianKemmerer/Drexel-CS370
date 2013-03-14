@@ -166,7 +166,14 @@ void extract_files() {
             header = f.header;
             FILE * fp;
             fp = fopen(header.name, "w");
-            fprintf(fp,"%s\n",f.contents);
+            //Rather than printing the contents as a string
+            //(lacks a null terminator)
+            //Print a single char into the file at a time
+            int j;
+            for(j = 0; j < (f.content_end-1); j++)
+            {
+				fprintf(fp,"%c",f.contents[j]);
+			}
             fclose(fp);
             printf("\t%s\n", header.name);
     }
