@@ -10,12 +10,90 @@
 #include <linux/fs.h>     	
 #include <asm/atomic.h>
 #include <asm/uaccess.h>
+#include <linux/syscalls.h>
+#include <linux/fcntl.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Julian Kemmerer");
 
+//Not sure what this does...
 #define TARFS_MAGIC 0x19980122
 
+//Tar file header
+struct posix_header 
+{                              /* byte offset */
+  char name[100];               /*   0 */
+  char mode[8];                 /* 100 */
+  char uid[8];                  /* 108 */
+  char gid[8];                  /* 116 */
+  char size[12];                /* 124 */
+  char mtime[12];               /* 136 */
+  char chksum[8];               /* 148 */
+  char typeflag;                /* 156 */
+  char linkname[100];           /* 157 */
+  char magic[6];                /* 257 */
+  char version[2];              /* 263 */
+  char uname[32];               /* 265 */
+  char gname[32];               /* 297 */
+  char devmajor[8];             /* 329 */
+  char devminor[8];             /* 337 */
+  char prefix[155];             /* 345 */
+                                /* 500 */
+};
+
+//This will be the private data stored in the file
+#define MAX_FILE_TARFS_FILE_SIZE 1000
+struct tar_file {
+    struct posix_header header;
+    char  contents[MAX_FILE_TARFS_FILE_SIZE];
+    int content_end;
+    int is_active;
+} typedef tar_file;
+
+//Struct representing a tar file system
+#define MAX_FILES_PER_FS_INSTANCE 50
+#define MAX_TAR_FILE_PATH_LENGTH 100
+struct tarfs
+{
+	char tar_filepath[MAX_TAR_FILE_PATH_LENGTH];
+	int is_active;
+	tar_file files[MAX_FILES_PER_FS_INSTANCE];
+	int file_count;
+};
+
+//List of tarfs instances
+#define MAX_TARFS_INSTANCES 50
+//List of instances
+struct tarfs tarfs_instances[MAX_TARFS_INSTANCES];
+
+//Terrible terrible hack
+//Use a temp global tarfs instance ptr to search for tarfs instance between
+//Function calls of get_super and fill_super
+struct tarfs * tmp_tarfs_ptr;
+
+//Add instance return pointer to new instance
+struct tarfs * add_tarfs_instance(const char *devname)
+{
+	printk(KERN_DEBUG "Adding instance of tarfs: %s\n",devname);
+	
+	//Loop through list of instances
+	//And check for one that is not active
+	//Use that space (lazy, I know)
+	int i;
+	for(i=0; i< MAX_TARFS_INSTANCES; i++)
+	{
+		if(tarfs_instances[i].is_active != 1)
+		{
+			//Found an instance
+			//TODO
+			//Add filepath into struct
+			strcpy(tarfs_instances[i].tar_filepath,devname);
+			return &(tarfs_instances[i]);
+		}
+	}
+	//Done, found nothing
+	return NULL;
+}
 
 //Function to convert block size to bits (from example)
 static inline unsigned int blksize_bits(unsigned int size)
@@ -181,20 +259,173 @@ static struct dentry *tarfs_create_dir (struct super_block *sb,
 	return 0;
 }
 
-
-//Create files
-static void tarfs_create_files (struct super_block *sb, struct dentry *root)
+void add_tarfs_file(struct tarfs * tfs, tar_file tarfile,struct super_block *sb, struct dentry *root)
 {
+	//Update files list
+	tfs->files[tfs->file_count] = tarfile;
+	tfs->file_count++;
+	
+	//Add this as a vfs entry
+	//printk(KERN_DEBUG "Creating tarfs file with name: %s\n", tarfile.header.name);
+	tarfs_create_file(sb, root, tfs->files[tfs->file_count].header.name);
+	
+	//Examples
+	/*
 	//Declare subdir
 	struct dentry *subdir;
 
 	//Create top level dir
-	tarfs_create_file(sb, root, "topleveldir");
-
+	
 	//Create sub dir
 	subdir = tarfs_create_dir(sb, root, "subdir");
 	if (subdir)
 		tarfs_create_file(sb, subdir, "subdirfile");
+		*/
+}
+
+
+//Populate a tarfs instance
+void process_tar_file(struct tarfs * tarfs_instance,struct super_block *sb, struct dentry *root)
+{
+	//Start reading from the tar file
+	int fd;
+	//Single char buffer
+	char c;
+	//Filename from instance
+	char * filename = tarfs_instance->tar_filepath;
+	//printk(KERN_DEBUG "Starting tarfs instance from file: %s\n", filename);
+	//File count
+	int offset = 0;
+	int header_offset = 500;
+	//c is current character being read
+	int count_nulls = 0;
+	int file_started = 0;
+	//Tmp header to hold info during iterations
+	struct posix_header header;
+
+	//See this article here before demanding more comments
+	//http://www.linuxjournal.com/article/8110?page=0,1
+	mm_segment_t old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	//Open the file
+	fd = sys_open(filename, O_RDONLY, 0);
+	if (fd >= 0) 
+	{
+		while (sys_read(fd,&c, sizeof(char)) == sizeof(char))
+		{
+			//One char at a time
+			//Now use Tim's code...
+			//Get all the meta data for the files and the content
+			if(c != -1) //EOF == -1?
+			{ 
+				//Adjust null count
+				if(!c) 
+				{
+					// If we have a null character, we need to increment the number of nulls.
+					// This will get reset each time we hit a character that is not a null
+					count_nulls++;
+					
+					if(count_nulls >= 493) { // This is basically the "magic number" of nulls we need to declare the end of a file's contents
+					// We are now resetting the loop
+					offset = 0;
+					file_started = 0;
+					//Don't need to unget since this executes right after increment
+					}
+					
+					//Do skip this iteration for this null char though
+					continue;
+				} 
+				
+				//Must be a non null char
+				count_nulls = 0;
+					
+				//Do rest of normal stuff		
+				
+				//Check for stage of reading...
+				if(offset < header_offset) {
+					// Load in the headers based on their offset 
+					if(offset < 100) {
+						file_started = 1;
+						header.name[offset] = c;
+					}
+					else if(offset < 108)
+						header.mode[offset - 100] = c;
+					else if(offset < 116)
+						header.uid[offset - 108] = c;
+					else if(offset < 124)
+						header.gid[offset - 116] =  c;
+					else if(offset < 136)
+						header.size[offset - 124] = c;
+					else if(offset < 148)
+						header.mtime[offset - 136] = c;
+					else if(offset < 156)
+						header.chksum[offset - 148] = c;
+					else if(offset < 157)
+						header.typeflag = c;
+					else if(offset < 257)
+						header.linkname[offset - 157] = c;
+					else if(offset < 263)
+					   header.magic[offset - 257] = c;
+					else if(offset < 265)
+						header.version[offset - 263] = c;
+					else if(offset < 297)
+						header.uname[offset - 265] = c;
+					else if(offset < 329)
+						header.gname[offset - 297] = c;
+					else if(offset < 337)
+						header.devmajor[offset - 329] = c;
+					else if(offset < 345)
+						header.devminor[offset - 337] = c;
+					else
+						header.prefix[offset - 345] = c;
+				}
+				else if (offset == header_offset){
+					// We've completed one entire file header
+					//Populate a file struct
+					tar_file f;
+					f.header = header;
+					f.content_end = 0;
+					//Take care of adding this at a file
+					add_tarfs_file(tarfs_instance, f,sb,root);
+					//Reset header
+					struct posix_header reset;
+					header = reset;
+				} else { 
+					// Since we've completed a file header, the rest must be the file's content until we reach enough of the null delimiter
+					if(c){
+						// Read the character into the file's contents
+						tar_file * f = &(tarfs_instance->files[tarfs_instance->file_count-1]);
+						if(f->content_end < MAX_FILE_TARFS_FILE_SIZE) {
+							// As long as we have room
+							f->contents[f->content_end] = c;
+							f->content_end++;
+						}
+					}
+				}
+				
+				//Increment offset
+				if(file_started == 1)
+					offset++;
+			}
+			//EOF reached
+		}
+		sys_close(fd);
+	}
+	set_fs(old_fs);	
+		
+}
+
+
+//Create files
+static void tarfs_create_files (struct super_block *sb, struct dentry *root)
+{
+	//Ok we need to read the file
+	//File name is dev name stored in sb private data
+	//TODO process the sb
+	struct tarfs * tarfs_instance;
+	tarfs_instance = (struct tarfs *)sb->s_fs_info;
+	process_tar_file(tarfs_instance,sb,root);
 }
 
 //Generic operations from already written functions in the kernel
@@ -203,9 +434,21 @@ static struct super_operations tarfs_s_ops = {
 	.drop_inode	= generic_delete_inode,
 };
 
-//Fill super block for root directory
+void init_tarfs_struct(struct tarfs * tfs)
+{
+	//Init values
+	tfs->is_active = 1;
+	tfs->file_count = 0;
+}
+
+//Fill super block (root directory)
 static int tarfs_fill_super (struct super_block *sb, void *data, int silent)
 {
+	//Give the super_block private information regarding this instance
+	//Use tmp ptr as not condoned in declaration, then init
+	sb->s_fs_info = tmp_tarfs_ptr;
+	init_tarfs_struct( (struct tarfs *)sb->s_fs_info);
+	
 	//Root inode and directory entry
 	struct inode *root;
 	struct dentry *root_dentry;
@@ -245,6 +488,11 @@ static int tarfs_get_super(struct file_system_type *fst,
 	 int flags, const char *devname, void *data,
 	 struct vfsmount *mnt)
 {
+	//Feel like this is a hack (see above notes too)
+	//Add a new tarfs instance with the devname
+	//Then in tarfs_fill_super use this to search for our instance
+	tmp_tarfs_ptr = add_tarfs_instance(devname);
+	
 	//This is called when filesystem is mounted
 	//Also calls tarfs_fill_super
 	return get_sb_single(fst, flags, data, tarfs_fill_super, mnt);
