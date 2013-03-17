@@ -263,11 +263,13 @@ void add_tarfs_file(struct tarfs * tfs, tar_file tarfile,struct super_block *sb,
 {
 	//Update files list
 	tfs->files[tfs->file_count] = tarfile;
-	tfs->file_count++;
 	
 	//Add this as a vfs entry
-	//printk(KERN_DEBUG "Creating tarfs file with name: %s\n", tarfile.header.name);
+	printk(KERN_DEBUG "Creating tarfs file with name: %s\n", tarfile.header.name);
 	tarfs_create_file(sb, root, tfs->files[tfs->file_count].header.name);
+	
+	//Increment file count
+	tfs->file_count++;
 	
 	//Examples
 	/*
@@ -275,6 +277,7 @@ void add_tarfs_file(struct tarfs * tfs, tar_file tarfile,struct super_block *sb,
 	struct dentry *subdir;
 
 	//Create top level dir
+	tarfs_create_file(sb, root, "toplevelfile");
 	
 	//Create sub dir
 	subdir = tarfs_create_dir(sb, root, "subdir");
@@ -293,7 +296,6 @@ void process_tar_file(struct tarfs * tarfs_instance,struct super_block *sb, stru
 	char c;
 	//Filename from instance
 	char * filename = tarfs_instance->tar_filepath;
-	//printk(KERN_DEBUG "Starting tarfs instance from file: %s\n", filename);
 	//File count
 	int offset = 0;
 	int header_offset = 500;
@@ -331,16 +333,17 @@ void process_tar_file(struct tarfs * tarfs_instance,struct super_block *sb, stru
 					offset = 0;
 					file_started = 0;
 					//Don't need to unget since this executes right after increment
-					}
-					
-					//Do skip this iteration for this null char though
+					//Just skip this char
 					continue;
+					}
+				}
+				else
+				{
+					//Must be a non null char
+					count_nulls = 0;
 				} 
 				
-				//Must be a non null char
-				count_nulls = 0;
-					
-				//Do rest of normal stuff		
+				//Do rest of normal stuff
 				
 				//Check for stage of reading...
 				if(offset < header_offset) {
@@ -350,7 +353,9 @@ void process_tar_file(struct tarfs * tarfs_instance,struct super_block *sb, stru
 						header.name[offset] = c;
 					}
 					else if(offset < 108)
-						header.mode[offset - 100] = c;
+					{
+						header.mode[offset - 100] = c;	
+					}
 					else if(offset < 116)
 						header.uid[offset - 108] = c;
 					else if(offset < 124)
