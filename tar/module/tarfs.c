@@ -62,6 +62,7 @@ struct tarfs
 };
 
 //List of tarfs instances
+//Overall this is probably bad as the entire file system is stored in memory...
 #define MAX_TARFS_INSTANCES 50
 //List of instances
 struct tarfs tarfs_instances[MAX_TARFS_INSTANCES];
@@ -85,9 +86,9 @@ struct tarfs * add_tarfs_instance(const char *devname)
 		if(tarfs_instances[i].is_active != 1)
 		{
 			//Found an instance
-			//TODO
 			//Add filepath into struct
 			strcpy(tarfs_instances[i].tar_filepath,devname);
+			tarfs_instances[i].is_active = 1;
 			return &(tarfs_instances[i]);
 		}
 	}
@@ -130,55 +131,113 @@ static int tarfs_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-#define TMPSIZE 20
+struct tar_file * find_file(struct file *filp)
+{
+	int i,j;
+	//Loop through all instances? Uh...?
+	for(i = 0; i < MAX_TARFS_INSTANCES; i++)
+	{
+		//If active
+		if(tarfs_instances[i].is_active == 1)
+		{
+			//Loop through all files ...
+			for(j = 0; j < MAX_FILES_PER_FS_INSTANCE; j++)
+			{
+				//If file is active
+				if(tarfs_instances[i].files[j].is_active ==1)
+				{
+					if(strcmp(filp->f_path.dentry->d_iname, tarfs_instances[i].files[j].header.name) == 0)
+					{
+						return &(tarfs_instances[i].files[j]);
+					}
+				}
+			}
+		}
+	}
+	return NULL;
+}
 
 //Read a file
 static ssize_t tarfs_read_file(struct file *filp, char *buf,
 		size_t count, loff_t *offset)
 {
-	//Read the file specific data
-	//filp->private_data;
-	
-	//Print data back to user by doing
-	//Use the offset value to read from specific area in file
-	char tmp[TMPSIZE];
-	int len_of_read = 0;
-	//len_of_read = snprintf(tmp, TMPSIZE, "%d\n", v);
-	
-	//Keep track of how many bytes read and increment offset at end
-	if (*offset > len_of_read)
-		return 0;
-	if (count > len_of_read - *offset)
-		count = len_of_read - *offset;
-
-	//Copy to user space
-	if (copy_to_user(buf, tmp + *offset, count))
+	//Find this file within our current file storage setup
+	tar_file * the_file = find_file(filp);
+	if(the_file == NULL)
+	{
 		return -EFAULT;
+	}
 	
+	//Start reading at the current offset
+	//How far will this write go?
+	int read_final_offset = (*offset) + count;
+	
+	//Check the current extent of the file
+	if(read_final_offset > the_file->content_end)
+	{
+		//If user want more than is there read only to end
+		read_final_offset = the_file->content_end;
+	}
+	
+	//Check if reading past largest file size?
+	if( read_final_offset > MAX_FILE_TARFS_FILE_SIZE )
+	{
+		read_final_offset = MAX_FILE_TARFS_FILE_SIZE;
+	}
+	
+	//Calculate the actual number of bytes read
+	int bytes_read = (int)read_final_offset - *offset;
+	
+	//Create pointer to contents at offset
+	char * tmp = &(the_file->contents) + (*offset);
+	
+	//Copy to user space
+	if (copy_to_user(buf, tmp, bytes_read))
+	{
+		return -EFAULT;
+	}
+		
 	//Increment offset
-	*offset += count;
-	return count;
+	*offset += bytes_read;
+	return bytes_read;
 }
 
 //Write to a file
 static ssize_t tarfs_write_file(struct file *filp, const char *buf,
 		size_t count, loff_t *offset)
 {
-	//Get private data using
-	//filp->private_data;
-	char tmp[TMPSIZE];
-	
-	//Read value from user
-	if (count >= TMPSIZE)
-		return -EINVAL;
-	//Set all zeros to start	
-	memset(tmp, 0, TMPSIZE);
-	//Copy in from user
-	if (copy_from_user(tmp, buf, count))
+	//Find this file within our current file storage setup
+	tar_file * the_file = find_file(filp);
+	if(the_file == NULL)
+	{
 		return -EFAULT;
+	}
 	
-	//Modify the private data
-	//TODO
+	//Start writing at the current offset
+	//How far will this write go?
+	int write_final_offset = (*offset) + count;
+	//Check that this is alright
+	if( write_final_offset <= MAX_FILE_TARFS_FILE_SIZE )
+	{
+		//Create pointer to contents at offset
+		char * start = &(the_file->contents) + (*offset);
+		
+		//Do write
+		//Set all zeros to start	
+		memset(start, 0, count);
+		
+		//Copy in from user
+		if (copy_from_user(start, buf, count))
+			return -EFAULT;
+			
+		//Update count for file
+		the_file->content_end = write_final_offset;
+	}
+	else
+	{
+		//Error, don't do write
+		return -EINVAL;
+	}
 	
 	//Return bytes written
 	return count;
@@ -259,10 +318,12 @@ static struct dentry *tarfs_create_dir (struct super_block *sb,
 	return 0;
 }
 
+//Function to initially popopulate fs with a single file
 void add_tarfs_file(struct tarfs * tfs, tar_file tarfile,struct super_block *sb, struct dentry *root)
 {
 	//Update files list
 	tfs->files[tfs->file_count] = tarfile;
+	tfs->files[tfs->file_count].is_active = 1;
 	
 	//Add this as a vfs entry
 	printk(KERN_DEBUG "Creating tarfs file with name: %s\n", tarfile.header.name);
@@ -290,6 +351,8 @@ void add_tarfs_file(struct tarfs * tfs, tar_file tarfile,struct super_block *sb,
 //Populate a tarfs instance
 void process_tar_file(struct tarfs * tarfs_instance,struct super_block *sb, struct dentry *root)
 {
+	//How to do directories here?
+	
 	//Start reading from the tar file
 	int fd;
 	//Single char buffer
